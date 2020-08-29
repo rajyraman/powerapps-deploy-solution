@@ -1,0 +1,74 @@
+name: powerappssolutiondeploy
+description: "Deploy Solution from Release with matching tag to the target environment"
+
+inputs:
+  token:
+    description: "GitHub Token"
+    required: true
+  tag:
+    description: "Tag Name"
+    required: true
+  solutionName:
+    description: "Solution Name"
+    required: true    
+  targetEnvironmentUrl:
+    description: "Target Environment URL"
+    required: true
+  applicationId:
+    description: "Application Id"
+    required: true
+  applicationSecret:
+    description: "Application Secret"
+    required: true
+  managed:
+    description: "Managed Solution?"
+    required: true
+    default: 'false'
+    
+outputs:
+  solution:
+    description: "Deployed Solution File"
+    value: ${{ steps.deploy-solution.outputs.solution }}
+runs:
+  using: composite
+
+  steps:
+    - id: set-params
+      run: echo "::set-output name=connectionString::AuthType=ClientSecret;Url=${{ inputs.targetEnvironmentUrl }};ApplicationId=${{ inputs.applicationId }};Secret=${{ inputs.applicationSecret }}"
+      shell: powershell
+      
+    - name: Deploy Solution
+      id: deploy-solution
+      shell: powershell
+      run: |
+        Install-Module -Name Xrm.Framework.CI.PowerShell.Cmdlets -Confirm:$false -Verbose -Force
+        Install-Module -Name PowerShellForGitHub -Confirm:$false -Verbose -Force
+
+        $tokenEncrypted = ConvertTo-SecureString -String ${{ inputs.token }} -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential "ignore", $tokenEncrypted
+        Set-GitHubAuthentication -Credential $cred          
+        Set-GitHubConfiguration -DefaultOwnerName ${{ github.repository_owner }}
+        Set-GitHubConfiguration -DefaultRepositoryName $('${{ github.repository }}' -replace '${{ github.repository_owner }}/', '')
+        Set-GitHubConfiguration -DisableTelemetry -LogRequestBody
+        
+        if('${{ inputs.managed }}' -eq 'true') {
+          $solution = Get-GitHubRelease -Tag ${{ inputs.tag }} | GitHubReleaseAsset | where Name -Match "managed.zip" | Select-Object -First 1
+        }
+        else {
+          $solution = Get-GitHubRelease -Tag ${{ inputs.tag }} | GitHubReleaseAsset | where Name -NotMatch "managed.zip" | Select-Object -First 1
+        }
+        
+        Get-GitHubReleaseAsset -Asset $solution.ID -Path $($solution.Name) -Force
+        echo "::set-output name=solution::$($solution.Name)"
+        
+        if('${{ inputs.managed }}' -eq 'true') {
+          Write-Host "****...Deploying solution $($solution.Name) as holding solution...****"
+          Import-XrmSolution -ConnectionString "${{ steps.set-params.outputs.connectionString }}" -HoldingSolution $true -SolutionFilePath "$($solution.Name)" -ImportAsync $true -Verbose
+
+          Write-Host "****...Applying solution upgrade ${{ inputs.solutionName }}...****"
+          Merge-XrmSolution -ConnectionString "${{ steps.set-params.outputs.connectionString }}" -UniqueSolutionName "${{ inputs.solutionName }}" -ImportAsync $true -Verbose
+        }
+        else {
+          Write-Host "****...Deploying solution $($solution.Name)...****"
+          Import-XrmSolution -ConnectionString "${{ steps.set-params.outputs.connectionString }}" -SolutionFilePath "$($solution.Name)" -ImportAsync $true -Verbose
+        }
