@@ -2,9 +2,8 @@ name: powerapps-deploy-solution
 author: Natraj Yegnaraman
 description: "Deploy Solution from Release with matching tag to the target environment"
 branding:
-  branding:
-    icon: 'zap'  
-    color: 'blue'
+  icon: "zap"
+  color: "blue"
 inputs:
   token:
     description: "GitHub Token"
