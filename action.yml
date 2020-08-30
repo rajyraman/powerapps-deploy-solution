@@ -1,6 +1,6 @@
 name: powerapps-deploy-solution
 author: Natraj Yegnaraman
-description: "Deploy a Power Apps solution from repo's Release assets, with matching tag to the target environment"
+description: "Deploy a Power Apps solution into the target environment."
 branding:
   icon: "zap"
   color: "blue"
